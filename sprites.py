@@ -1,60 +1,79 @@
+import time
+
 from PIL import Image
-from shapely.geometry import Point
+from shapely.geometry import Point, LineString, Polygon
 
 
-def get_corners_exceeding_terrain_area(image_center, terrain_area, width, height, px_per_map_unit):
-    width_on_map = width / px_per_map_unit
-    height_on_map = height / px_per_map_unit
-
-    bottom_right_corner = Point(image_center.x + width_on_map / 2, image_center.y - height_on_map / 2)
-    bottom_left_corner = Point(image_center.x - width_on_map / 2, image_center.y - height_on_map / 2)
-    top_right_corner = Point(image_center.x + width_on_map / 2, image_center.y + height_on_map / 2)
-    top_left_corner = Point(image_center.x - width_on_map / 2, image_center.y + height_on_map / 2)
-
-    exceeding_corners = []
-    if not terrain_area.contains(bottom_right_corner):
-        exceeding_corners += [(width, height)]
-    if not terrain_area.contains(bottom_left_corner):
-        exceeding_corners += [(0, height)]
-    if not terrain_area.contains(top_right_corner):
-        exceeding_corners += [(width, 0)]
-    if not terrain_area.contains(top_left_corner):
-        exceeding_corners += [(0, 0)]
-
-    return exceeding_corners
-
-
-def distance(x1, y1, x2, y2, exp=2):
-    return (abs(x1 - x2) ** exp + abs(y1 - y2) ** exp) ** (1 / exp)
+def get_map_on_image(image_center, width, height, px_per_map_unit):
+    return Polygon([
+        (image_center.x + width / 2 / px_per_map_unit, image_center.y - height / 2 / px_per_map_unit),
+        (image_center.x + width / 2 / px_per_map_unit, image_center.y + height / 2 / px_per_map_unit),
+        (image_center.x - width / 2 / px_per_map_unit, image_center.y + height / 2 / px_per_map_unit),
+        (image_center.x - width / 2 / px_per_map_unit, image_center.y - height / 2 / px_per_map_unit),
+    ])
 
 
 def distance_to_center(w, h, width, height):
     return distance(w, h, width / 2, height / 2)
 
 
-def alpha_channel(x, y, width, height, corners_to_avoid):
+def distance(x1, y1, x2, y2, exp=2):
+    return (abs(x1 - x2) ** exp + abs(y1 - y2) ** exp) ** (1 / exp)
+
+
+def alpha_channel(x, y, width, height, dist_to_line, inside):
     base_alpha_ratio = 1 - (distance_to_center(x, y, width, height) / (width / 2)) ** 2
-    distances_to_corners = [distance(x, y, x0, y0) for x0, y0 in corners_to_avoid]
 
-    border_alpha_ratio = (min([width / 2, *distances_to_corners]) / (width / 2)) ** 5
-    return int(max(0, 255 * min([base_alpha_ratio, border_alpha_ratio])))
+    if inside:
+        border_alpha_ratio = 0
+    elif dist_to_line > 20:
+        border_alpha_ratio = 0.5
+    else:
+        border_alpha_ratio = (dist_to_line / 40)
+
+    return int(max(0, 255 * min([base_alpha_ratio - border_alpha_ratio])))
 
 
-def convert_image(file_name, position, polygon, px_per_map_unit):
+distance_time = 0.0
+contains_time = 0.0
+
+
+def convert_image(file_name, image_center, polygon, px_per_map_unit):
+    global distance_time
+    global contains_time
     img = Image.open("sprites/" + file_name)
     img = img.convert("RGBA")
     datas = img.getdata()
 
     width, height = img.size
 
-    corners_exceeding_area = get_corners_exceeding_terrain_area(position, polygon, width, height, px_per_map_unit)
+    map_on_image = get_map_on_image(image_center, width, height, px_per_map_unit)
+    intersection = polygon.intersection(map_on_image)
+
+    poly_points_on_map = [((x - (image_center.x - width / 2 / px_per_map_unit)) * px_per_map_unit,
+                           (-y + (image_center.y + height / 2 / px_per_map_unit)) * px_per_map_unit)
+                          for x, y in intersection.exterior.coords]
+    poly_points_on_map.append(poly_points_on_map[-1])
+
+    line_strings = []
+    for i in range(len(poly_points_on_map) - 1):
+        line_strings += [LineString([poly_points_on_map[i], poly_points_on_map[i + 1]])]
+    inter_in_image = Polygon(poly_points_on_map)
 
     new_data = []
     for index, item in enumerate(datas):
         x = index % width
-        y = index / height
+        y = index // height
 
-        new_data.append(tuple(item[0:3] + (alpha_channel(x, y, width, height, corners_exceeding_area),)))
+        start = time.time()
+        min_distance_to_line_string = min([line_string.distance(Point(x, y)) for line_string in line_strings])
+        between = time.time()
+        distance_time += between - start
+        inside_of_polygon = inter_in_image.contains(Point(x, y))
+        contains_time += time.time() - between
+
+        new_data.append(tuple(item[0:3] + (alpha_channel(x, y, width, height,
+                                                         min_distance_to_line_string, inside_of_polygon),)))
 
     img.putdata(new_data)
     img.save("processed_sprites/" + file_name, "PNG")

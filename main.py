@@ -61,11 +61,28 @@ def random_points_in_polygon(number, polygon):
     ] if polygon.contains(pnt)]
 
 
+def uniformly_distribute_points(difference, poly):
+    points = []
+    minx, miny, maxx, maxy = poly.bounds
+    x = minx
+    while x <= maxx:
+        y = miny
+        while y <= maxy:
+            candidate_point = Point(x + random.uniform(- difference / 4, difference / 4),
+                                    y + random.uniform(- difference / 4, difference / 4))
+            if poly.contains(candidate_point):
+                points += [candidate_point]
+            y += difference
+        x += difference
+    return points
+
+
 SPRITES = {
     "forest": [str(x) + ".png" for x in range(2, 7)],
     "grassland": [str(x) + ".png" for x in range(1, 7)],
     "deep_water": [str(x) + ".png" for x in range(1, 6)],
     "shallow_water": [str(x) + ".png" for x in range(1, 5)],
+    "grassland_coast": [str(x) + ".png" for x in range(1, 2)],
 }
 
 
@@ -74,15 +91,17 @@ def put_sprites_onto_image(im, points, terrain_type, poly):
         sprites_for_terrain = SPRITES.get(terrain_type, [])
         if sprites_for_terrain:
             image_name = random.choice(sprites_for_terrain)
-            sprite_image = sprites.convert_image(terrain_type + "/" + image_name, point, poly, PX_PER_MAP_UNIT)
-            print(image_name)
-            # sprite_image.thumbnail((80, 80), Image.ANTIALIAS)
-            width, height = sprite_image.size
-            im.paste(sprite_image,
-                     (
-                         round(point.x * PX_PER_MAP_UNIT - width / 2),
-                         round(transpose(point.y * PX_PER_MAP_UNIT) - height / 2)
-                     ), sprite_image)
+            try:
+                sprite_image = sprites.convert_image(terrain_type + "/" + image_name, point, poly, PX_PER_MAP_UNIT)
+                width, height = sprite_image.size
+                im.paste(sprite_image,
+                         (
+                             round(point.x * PX_PER_MAP_UNIT - width / 2),
+                             round(transpose(point.y * PX_PER_MAP_UNIT) - height / 2)
+                         ), sprite_image)
+            except:
+                print("it failed")
+                pass
 
 
 def get_map():
@@ -95,9 +114,14 @@ def get_map():
 
         draw.polygon(coords, fill=COLORS[t.terrain_name])
 
-        points = random_points_in_polygon(250, t.poly)
+        uniformly_distributed_points = uniformly_distribute_points(0.8, t.poly)
+        put_sprites_onto_image(im, uniformly_distributed_points, t.terrain_name, t.poly)
+
+        points = random_points_in_polygon(15, t.poly)  # make it specific to the area
         put_sprites_onto_image(im, points, t.terrain_name, t.poly)
 
+    print("CONTAINS: ", sprites.contains_time)
+    print("DISTANCE: ", sprites.distance_time)
     # root_locs = models.RootLocation.query.all()
 
     # for rl in root_locs:

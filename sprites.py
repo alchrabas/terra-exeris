@@ -21,8 +21,13 @@ def distance(x1, y1, x2, y2, exp=2):
     return (abs(x1 - x2) ** exp + abs(y1 - y2) ** exp) ** (1 / exp)
 
 
+def relative_distance(x1, y1, x2, y2, width, height, exp=2):
+    rel = ((abs(x1 - x2) / width) ** exp + (abs(y1 - y2) / height) ** exp)
+    return min([1, max([0, rel])])
+
+
 def alpha_channel(x, y, width, height, dist_to_line, inside):
-    base_alpha_ratio = 1 - (distance_to_center(x, y, width, height) / (width / 2)) ** 2
+    base_alpha_ratio = 1 - relative_distance(x, y, width / 2, height / 2, width / 2, height / 2)
 
     if inside:
         border_alpha_ratio = 0
@@ -48,28 +53,36 @@ def convert_image(file_name, image_center, polygon, px_per_map_unit):
     width, height = img.size
 
     map_on_image = get_map_on_image(image_center, width, height, px_per_map_unit)
+
     intersection = polygon.intersection(map_on_image)
 
     poly_points_on_map = [((x - (image_center.x - width / 2 / px_per_map_unit)) * px_per_map_unit,
                            (-y + (image_center.y + height / 2 / px_per_map_unit)) * px_per_map_unit)
                           for x, y in intersection.exterior.coords]
-    poly_points_on_map.append(poly_points_on_map[-1])
+    poly_points_on_map.append(poly_points_on_map[0])
 
     line_strings = []
     for i in range(len(poly_points_on_map) - 1):
+        if poly_points_on_map[i] == poly_points_on_map[i + 1]:
+            continue
         line_strings += [LineString([poly_points_on_map[i], poly_points_on_map[i + 1]])]
     inter_in_image = Polygon(poly_points_on_map)
 
     new_data = []
     for index, item in enumerate(datas):
         x = index % width
-        y = index // height
+        y = index // width
 
         start = time.time()
-        min_distance_to_line_string = min([line_string.distance(Point(x, y)) for line_string in line_strings])
+
         between = time.time()
         distance_time += between - start
         inside_of_polygon = inter_in_image.contains(Point(x, y))
+
+        min_distance_to_line_string = 0
+        if not inside_of_polygon:
+            min_distance_to_line_string = min([line_string.distance(Point(x, y)) for line_string in line_strings])
+
         contains_time += time.time() - between
 
         new_data.append(tuple(item[0:3] + (alpha_channel(x, y, width, height,

@@ -1,6 +1,8 @@
 import time
 
+import pathlib
 from PIL import Image
+from shapely import prepared
 from shapely.geometry import Point, LineString, Polygon
 
 
@@ -31,8 +33,8 @@ def alpha_channel(x, y, width, height, dist_to_line, inside):
 
     if inside:
         border_alpha_ratio = 0
-    elif dist_to_line > 20:
-        border_alpha_ratio = 0.5
+    elif dist_to_line > 40:
+        border_alpha_ratio = 1
     else:
         border_alpha_ratio = (dist_to_line / 40)
 
@@ -66,7 +68,7 @@ def convert_image(file_name, image_center, polygon, px_per_map_unit):
         if poly_points_on_map[i] == poly_points_on_map[i + 1]:
             continue
         line_strings += [LineString([poly_points_on_map[i], poly_points_on_map[i + 1]])]
-    inter_in_image = Polygon(poly_points_on_map)
+    inter_in_image = prepared.prep(Polygon(poly_points_on_map))
 
     new_data = []
     for index, item in enumerate(datas):
@@ -75,19 +77,21 @@ def convert_image(file_name, image_center, polygon, px_per_map_unit):
 
         start = time.time()
 
-        between = time.time()
-        distance_time += between - start
         inside_of_polygon = inter_in_image.contains(Point(x, y))
+        between = time.time()
+        contains_time += between - start
 
         min_distance_to_line_string = 0
         if not inside_of_polygon:
             min_distance_to_line_string = min([line_string.distance(Point(x, y)) for line_string in line_strings])
 
-        contains_time += time.time() - between
+        distance_time += time.time() - start
 
         new_data.append(tuple(item[0:3] + (alpha_channel(x, y, width, height,
                                                          min_distance_to_line_string, inside_of_polygon),)))
 
     img.putdata(new_data)
+
+    pathlib.Path("processed_sprites/" + file_name).parent.mkdir(parents=True, exist_ok=True)
     img.save("processed_sprites/" + file_name, "PNG")
     return img

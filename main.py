@@ -1,16 +1,20 @@
 import io
+import math
 import random
+import time
 
 from PIL import Image
 from PIL import ImageDraw
-from shapely.geometry import Polygon, Point, LineString
+from shapely import affinity
+from shapely.geometry import Point, LineString, MultiPoint
 from shapely.ops import linemerge, unary_union, polygonize
 
 import sprites
+import terrain_examples
+from helpers import closest_point, image_with_affected_brigthness, points_located_on_center_line
 
 PX_PER_MAP_UNIT = 50
-
-VIEW_SIZE = 500
+TIME_CONSUMPTION = 10.0
 
 COLORS = {
     "grassland": "green",
@@ -22,40 +26,9 @@ COLORS = {
     "mountains": "#aaaaaa",
 }
 
+size, all_terrains = terrain_examples.small_forest_island()
 
-class Terrain:
-    def __init__(self, poly, terrain_name, priority=1, center_line=None):
-        self.poly = poly
-        self.terrain_name = terrain_name
-        self.priority = priority
-        self.center_line = center_line
-
-
-poly_grass = Polygon([(0.8, 0.8), (0.8, 2), (1, 2), (3, 0.8)])
-poly_grass_coast = Polygon([(0.3, 0.3), (0.3, 2), (0.8, 2), (0.8, 0.8), (3, 0.8), (3, 0.3)])
-poly_water = Polygon([(0, 0), (0, 10), (10, 10), (10, 0)])
-poly_grass2 = Polygon([(1, 1), (5, 1), (5, 3), (3, 5), (1, 1)])
-poly_road = Polygon([(1, 1), (0.9, 1.1), (3.9, 4.1), (4, 4), (1, 1)])
-poly_forest = Polygon([(5, 2), (7, 3), (8, 5), (7, 7), (5, 8), (3, 7), (2, 5), (3, 3)])
-
-poly_mountains = Polygon([(1, 2), (2, 1), (3, 2), (6, 1.5), (8, 4), (6.5, 5), (3, 6), (1.5, 5)])
-center_line_mountains = LineString([(1, 2), (3, 4), (8, 4)])
-
-poly_all_terrains = poly_grass.union(poly_forest).union(poly_grass_coast).union(poly_grass2)
-poly_shallow_water = poly_all_terrains.buffer(0.5, resolution=2).difference(poly_all_terrains)
-poly_water_except_land = poly_water.difference(poly_all_terrains.union(poly_shallow_water))
-
-grass = Terrain(poly_grass, "grassland")
-grass_coast = Terrain(poly_grass_coast, "grassland_coast")
-shallow_water = Terrain(poly_shallow_water, "shallow_water", priority=0)
-deep_water = Terrain(poly_water_except_land, "deep_water", priority=0)
-grass2 = Terrain(poly_grass2, "grassland")
-road = Terrain(poly_road, "road", priority=3)
-forest = Terrain(poly_forest, "forest", priority=2)
-mountains = Terrain(poly_mountains, "mountains", 1, center_line_mountains)
-
-# all_terrains = [shallow_water, deep_water, grass_coast, grass, grass2, forest]  # , road]
-all_terrains = [mountains]
+VIEW_SIZE = size * PX_PER_MAP_UNIT
 
 
 def transpose(y):
@@ -76,10 +49,16 @@ def uniformly_distribute_points(difference, poly):
     while x <= maxx:
         y = miny
         while y <= maxy:
-            candidate_point = Point(x + random.uniform(- difference / 4, difference / 4),
-                                    y + random.uniform(- difference / 4, difference / 4))
-            if poly.contains(candidate_point):
-                points += [candidate_point]
+            n = 0
+            while n < 300:
+                n += 1
+                candidate_point = Point(x + random.uniform(- difference / 4, difference / 4),
+                                        y + random.uniform(- difference / 4, difference / 4))
+                if poly.contains(candidate_point):
+                    points += [candidate_point]
+                    if n > 1:
+                        print("IN ", n, "th attempt")
+                    break
             y += difference
         x += difference
     return points
@@ -91,46 +70,51 @@ SPRITES = {
     "deep_water": [str(x) + ".png" for x in range(1, 6)],
     "shallow_water": [str(x) + ".png" for x in range(1, 5)],
     "grassland_coast": [str(x) + ".png" for x in range(1, 2)],
-    "left_mountains": [str(x) + ".png" for x in range(1, 7)],
-    "mountains": [str(x) + ".png" for x in range(1, 5)],
+    "mountains_side": [str(x) + ".png" for x in range(1, 7)],
+    "mountains": [str(x) + ".png" for x in range(5, 9)],
 }
 
 
-def put_sprites_onto_image(im, points, terrain_type, poly):
-    for point in points:
-        sprites_for_terrain = SPRITES.get(terrain_type, [])
-        if sprites_for_terrain:
-            image_name = random.choice(sprites_for_terrain)
-            try:
-                sprite_image = sprites.convert_image(terrain_type + "/" + image_name, point, poly, PX_PER_MAP_UNIT)
-                width, height = sprite_image.size
-                im.paste(sprite_image,
-                         (
-                             round(point.x * PX_PER_MAP_UNIT - width / 2),
-                             round(transpose(point.y * PX_PER_MAP_UNIT) - height / 2)
-                         ), sprite_image)
-            except Exception as e:
-                print("it failed", e)
-                pass
-
-
 def normal_procedure(t, im):
-    uniformly_distributed_points = uniformly_distribute_points(8, t.poly)
-    put_sprites_onto_image(im, uniformly_distributed_points, t.terrain_name, t.poly)
+    uniformly_distributed_points = uniformly_distribute_points(8 / TIME_CONSUMPTION, t.poly)
+    put_rotated_sprites_onto_image(im, False, uniformly_distributed_points, t.terrain_name, t.poly)
 
-    points = random_points_in_polygon(1, t.poly)  # make it specific to the area
-    put_sprites_onto_image(im, points, t.terrain_name, t.poly)
+    points = random_points_in_polygon(int(3 * TIME_CONSUMPTION), t.poly)  # make it specific to the area
+    put_rotated_sprites_onto_image(im, False, points, t.terrain_name, t.poly)
 
 
-def put_rotated_sprites_onto_image(im, is_right_side, points, terrain_type, poly):
+def get_angle(line_string, point_on_line):
+    two_points = point_on_line.buffer(0.001).exterior.intersection(line_string)
+
+    if not isinstance(two_points, MultiPoint) or len(two_points) != 2:
+        return 0
+    pt1, pt2 = two_points
+
+    dx = pt2.x - pt1.x
+    dy = pt2.y - pt1.y
+
+    return math.atan2(dy, dx)
+
+
+def put_rotated_sprites_onto_image(im, is_right_side, points, terrain_type, poly, center_line=None):
     for point in points:
         sprites_for_terrain = SPRITES.get(terrain_type, [])
         if sprites_for_terrain:
-            image_name = random.choice(sprites_for_terrain)
+            if center_line:
+                close_point = closest_point(point, LineString(center_line))
+                angle = get_angle(LineString(center_line), close_point)
+                dist = close_point.distance(point)
+            else:
+                angle = random.randint(0, 360)
+                dist = 0
             try:
-                sprite_image = sprites.convert_image(terrain_type + "/" + image_name, point, poly, PX_PER_MAP_UNIT)
+                r_poly = affinity.rotate(poly, math.degrees(-angle), origin=point)
+                image_name = random.choice(sprites_for_terrain)
+                sprite_image = sprites.convert_image(terrain_type + "/" + image_name, point, r_poly, PX_PER_MAP_UNIT)
                 if is_right_side:
                     sprite_image = sprite_image.transpose(Image.FLIP_TOP_BOTTOM)
+                sprite_image = sprite_image.rotate(math.degrees(angle), expand=1)
+                sprite_image = image_with_affected_brigthness(dist, sprite_image)
                 width, height = sprite_image.size
                 im.paste(sprite_image,
                          (
@@ -147,21 +131,23 @@ def side_based_procedure(t, im):
     con = t.poly.boundary.coords
     mer = linemerge([con, line])
     uni = unary_union(mer)
-    v = list(polygonize(uni))
+    left_side, right_side = polygonize(uni)
     draw = ImageDraw.Draw(im)
-    draw.polygon(convert_to_map(v[0].boundary.coords), fill="#ff0000")
-    draw.polygon(convert_to_map(v[1].boundary.coords), fill="#00ff00")
+    # draw.polygon(convert_to_map(v[0].boundary.coords), fill="#ff0000")
+    # draw.polygon(convert_to_map(v[1].boundary.coords), fill="#00ff00")
 
-    left_points = uniformly_distribute_points(0.8, t.poly)
-    left_points += random_points_in_polygon(50, v[0])
-    right_points = uniformly_distribute_points(0.8, t.poly)
-    right_points += random_points_in_polygon(50, v[1])
+    center_l = points_located_on_center_line(t.center_line, max(1, 1 / TIME_CONSUMPTION))
 
-    put_rotated_sprites_onto_image(im, False, left_points, "left_mountains", v[0])
-    put_rotated_sprites_onto_image(im, True, right_points, "left_mountains", v[1])
+    left_points = uniformly_distribute_points(8 / TIME_CONSUMPTION, t.poly)
+    left_points += random_points_in_polygon(int(3 * TIME_CONSUMPTION), left_side)
+    right_points = uniformly_distribute_points(8 / TIME_CONSUMPTION, t.poly)
+    right_points += random_points_in_polygon(int(3 * TIME_CONSUMPTION), right_side)
 
-    center_l = [Point(1, 2), Point(2, 3), Point(3, 4), Point(4, 4), Point(5, 4), Point(6, 4), Point(7, 4), Point(8, 4)]
-    put_sprites_onto_image(im, center_l, "mountains", t.poly)
+    put_rotated_sprites_onto_image(im, False, left_points, "mountains_side", left_side, center_l)
+    put_rotated_sprites_onto_image(im, True, right_points, "mountains_side", right_side, center_l)
+
+    if center_l:
+        put_rotated_sprites_onto_image(im, False, center_l, "mountains", t.poly, center_l)
 
 
 def convert_to_map(coords):
@@ -175,7 +161,7 @@ def get_map():
     for t in all_terrains:
         coords = convert_to_map(t.poly.exterior.coords)
 
-        draw.polygon(coords, fill=COLORS[t.terrain_name])
+        # draw.polygon(coords, fill=COLORS[t.terrain_name])
 
         if t.terrain_name == "mountains":
             side_based_procedure(t, im)
@@ -207,9 +193,9 @@ def get_map():
     return b.getvalue()
 
 
-# sprites.process_all_images("sprites")
-
+start = time.time()
 map_bytes = get_map()
+print("FULL TIME: ", time.time() - start)
 
 with open('myfile.png', 'wb') as f:
     f.write(map_bytes)

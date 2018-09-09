@@ -1,3 +1,5 @@
+import random
+
 from PIL import ImageEnhance
 from shapely.geometry import Point
 
@@ -23,4 +25,25 @@ def points_located_on_center_line(center_line, diff):
     while distance_from_start < line_length:
         points += [center_line.interpolate(distance_from_start)]
         distance_from_start += diff
+    points += [center_line.interpolate(line_length - 0.01)]
+    return points
+
+
+def uniformly_distribute_points(difference, poly):
+    points = []
+    minx, miny, maxx, maxy = poly.bounds
+    x = minx
+    while x <= maxx:
+        y = miny
+        while y <= maxy:
+            n = 0
+            while n < 300:
+                n += 1
+                candidate_point = Point(x + random.uniform(- difference / 4, difference / 4),
+                                        y + random.uniform(- difference / 4, difference / 4))
+                if poly.contains(candidate_point):
+                    points += [candidate_point]
+                    break
+            y += difference
+        x += difference
     return points

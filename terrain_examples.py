@@ -14,7 +14,8 @@ def small_forest_island(with_road=False):
     poly_grass_coast = Polygon([(0.3, 0.3), (0.3, 2), (0.8, 2), (0.8, 0.8), (3, 0.8), (3, 0.3)])
     poly_water = Polygon([(0, 0), (0, 10), (10, 10), (10, 0)])
     poly_grass2 = Polygon([(1, 1), (5, 1), (5, 3), (3, 5), (1, 1)])
-    poly_road = Polygon([(1, 1), (0.9, 1.1), (3.9, 4.1), (4, 4), (1, 1)])
+    # poly_road = Polygon([(1.05, 0.95), (0.95, 1.05), (6.95, 7.05), (7.05, 6.95)])
+    road_line = LineString([(1, 1), (7, 7)])
     poly_forest = Polygon([(5, 2), (7, 3), (8, 5), (7, 7), (5, 8), (3, 7), (2, 5), (3, 3)])
 
     poly_all_terrains = poly_grass.union(poly_forest).union(poly_grass_coast).union(poly_grass2)
@@ -27,7 +28,7 @@ def small_forest_island(with_road=False):
     deep_water = Terrain(poly_water_except_land, "deep_water", priority=0)
     grass2 = Terrain(poly_grass2, "grassland")
     forest = Terrain(poly_forest, "forest", priority=2)
-    road = Terrain(poly_road, "road", priority=3)
+    road = Terrain(None, "road", priority=3, center_line=road_line)
 
     terrains = [deep_water, shallow_water, grass_coast, grass, grass2, forest]
     if with_road:
@@ -42,7 +43,10 @@ def small_mountain_chain():
     center_line_mountains = LineString([(1, 2), (3, 4), (8, 4)])
     mountains = Terrain(poly_mountains, "mountains", 1, center_line_mountains)
     grass = Terrain(poly_grass, "grassland")
-    return 10, [grass, mountains]
+    poly_river = Polygon([(5.05, 3.95), (4.95, 4.05), (2.95, 2.05), (3.05, 1.95)])
+    river_center_line = LineString([(5, 4), (3, 2)])
+    river = Terrain(poly_river, "river", center_line=river_center_line)
+    return 10, [grass, mountains, river]
 
 
 def show_everything():
@@ -54,6 +58,7 @@ def show_everything():
     poly_mountains = Polygon([(11, 2), (12, 1), (13, 2), (16, 1.5), (18, 4), (16.5, 5), (13, 6), (11.5, 5)])
     center_line_mountains = LineString([(11, 2), (13, 4), (18, 4)])
     poly_grass3_and_mountains = Polygon([(10, 0.5), (18, 1), (19, 7), (13, 7), (11, 6)])
+    road_line = LineString([(1, 1), (7, 7)])
 
     poly_first_island = poly_grass.union(poly_forest).union(poly_grass_coast) \
         .union(poly_grass2)
@@ -72,9 +77,14 @@ def show_everything():
     grass2 = Terrain(poly_grass2, "grassland")
     forest = Terrain(poly_forest, "forest", priority=2)
     grass3 = Terrain(poly_grass3, "grassland")
+    road = Terrain(None, "road", priority=3, center_line=road_line)
+
+    poly_river = Polygon([(15.05, 3.95), (14.95, 4.05), (12.95, 2.05), (13.05, 1.95)])
+    river_center_line = LineString([(15, 4), (13, 2)])
+    river = Terrain(poly_river, "river", center_line=river_center_line)
 
     mountains = Terrain(poly_mountains, "mountains", 1, center_line_mountains)
 
-    terrains = [shallow_water1, shallow_water2, deep_water, grass_coast, grass, grass2, forest, grass3, mountains]
+    terrains = [deep_water, shallow_water1, shallow_water2, grass_coast, grass, grass2, forest, grass3, mountains, road, river]
 
     return 20, terrains

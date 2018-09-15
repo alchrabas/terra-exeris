@@ -47,3 +47,16 @@ def uniformly_distribute_points(difference, poly):
             y += difference
         x += difference
     return points
+
+
+def distance_to_center(w, h, width, height):
+    return distance(w, h, width / 2, height / 2)
+
+
+def distance(x1, y1, x2, y2, exp=2):
+    return (abs(x1 - x2) ** exp + abs(y1 - y2) ** exp) ** (1 / exp)
+
+
+def relative_distance(x1, y1, x2, y2, width, height, exp=2):
+    rel = ((abs(x1 - x2) / width) ** exp + (abs(y1 - y2) / height) ** exp)
+    return min([1, max([0, rel])])

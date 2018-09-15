@@ -9,13 +9,13 @@ from shapely import affinity
 from shapely.geometry import Point, MultiPoint, LineString
 from shapely.ops import linemerge, unary_union, polygonize
 
-import helpers
-import sprites
+from src import sprites, helpers
 import terrain_examples
-from helpers import points_located_on_center_line
 
 PX_PER_MAP_UNIT = 50
-TIME_CONSUMPTION = 1
+TIME_CONSUMPTION = 10
+
+sprites_converted = 0
 
 COLORS = {
     "grassland": "green",
@@ -93,6 +93,8 @@ def put_rotated_sprites_onto_image(im, is_right_side, points, terrain_type, poly
                 image_name = random.choice(sprites_for_terrain)
                 sprite_image = sprites.convert_image(terrain_type + "/" + image_name, point,
                                                      r_poly, PX_PER_MAP_UNIT, fadeout_threshold)
+                global sprites_converted
+                sprites_converted += 1
                 if is_right_side:
                     sprite_image = sprite_image.transpose(Image.FLIP_TOP_BOTTOM)
                 sprite_image = sprite_image.rotate(math.degrees(angle), expand=1)
@@ -108,7 +110,6 @@ def put_rotated_sprites_onto_image(im, is_right_side, points, terrain_type, poly
 
             except Exception as e:
                 print("it failed", e)
-                pass
 
 
 def side_based_procedure(terrain, image):
@@ -121,7 +122,7 @@ def side_based_procedure(terrain, image):
     # draw.polygon(convert_to_map(v[0].boundary.coords), fill="#ff0000")
     # draw.polygon(convert_to_map(v[1].boundary.coords), fill="#00ff00")
 
-    center_l = points_located_on_center_line(terrain.center_line, max(1, 1 / TIME_CONSUMPTION))
+    center_l = helpers.points_located_on_center_line(terrain.center_line, max(1, 1 / TIME_CONSUMPTION))
 
     left_points = helpers.uniformly_distribute_points(8 / TIME_CONSUMPTION, terrain.poly)
     left_points += random_points_in_polygon(int(3 * TIME_CONSUMPTION), left_side)
@@ -138,7 +139,7 @@ def side_based_procedure(terrain, image):
 def draw_road(terrain, image):
     draw = ImageDraw.Draw(image)
 
-    points = points_located_on_center_line(terrain.center_line, 0.35)
+    points = helpers.points_located_on_center_line(terrain.center_line, 0.35)
     points = convert_to_map([(point.x + random.uniform(-0.1, 0.1),
                               point.y + random.uniform(-0.1, 0.1)) for point in points])
 
@@ -152,7 +153,7 @@ def draw_road(terrain, image):
 
 
 def draw_river(terrain, image):
-    pts_for_image = points_located_on_center_line(terrain.center_line, 1)
+    pts_for_image = helpers.points_located_on_center_line(terrain.center_line, 1)
 
     put_rotated_sprites_onto_image(image, False, pts_for_image, "river", terrain.poly, fadeout_threshold=3)
 
@@ -190,8 +191,9 @@ def get_map():
         else:
             normal_procedure(t, im)
 
-    print("CONTAINS: ", sprites.contains_time)
-    print("DISTANCE: ", sprites.distance_time)
+    print("PREPROCESSING time:", sprites.preprocess_time)
+    print("CONTAINS time: ", sprites.contains_time)
+    print("DISTANCE time: ", sprites.distance_time)
     print("hits")
     print(" inside:", sprites.inside_hits)
     print("outside:", sprites.outside_hits)
@@ -221,6 +223,7 @@ def get_map():
 start = time.time()
 map_bytes = get_map()
 print("FULL TIME: ", time.time() - start)
+print("ALL SPRITES USED:", sprites_converted)
 
 with open('myfile.png', 'wb') as f:
     f.write(map_bytes)

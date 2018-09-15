@@ -3,7 +3,9 @@ import time
 
 from PIL import Image
 from shapely import prepared
-from shapely.geometry import Point, LineString, Polygon
+from shapely.geometry import Polygon
+
+from src import helpers, preprocess
 
 
 def get_map_on_image(image_center, width, height, px_per_map_unit):
@@ -15,21 +17,8 @@ def get_map_on_image(image_center, width, height, px_per_map_unit):
     ])
 
 
-def distance_to_center(w, h, width, height):
-    return distance(w, h, width / 2, height / 2)
-
-
-def distance(x1, y1, x2, y2, exp=2):
-    return (abs(x1 - x2) ** exp + abs(y1 - y2) ** exp) ** (1 / exp)
-
-
-def relative_distance(x1, y1, x2, y2, width, height, exp=2):
-    rel = ((abs(x1 - x2) / width) ** exp + (abs(y1 - y2) / height) ** exp)
-    return min([1, max([0, rel])])
-
-
 def alpha_channel(x, y, width, height, dist_to_line, inside, threshold):
-    base_alpha_ratio = 1 - relative_distance(x, y, width / 2, height / 2, width / 2, height / 2)
+    base_alpha_ratio = 1 - helpers.relative_distance(x, y, width / 2, height / 2, width / 2, height / 2)
 
     if inside:
         border_alpha_ratio = 0
@@ -41,6 +30,7 @@ def alpha_channel(x, y, width, height, dist_to_line, inside, threshold):
     return int(max(0, 255 * min([base_alpha_ratio - border_alpha_ratio])))
 
 
+preprocess_time = 0.0
 distance_time = 0.0
 contains_time = 0.0
 inside_hits = 0
@@ -48,6 +38,7 @@ outside_hits = 0
 
 
 def convert_image(file_name, image_center, polygon, px_per_map_unit, fadeout_threshold):
+    global preprocess_time
     global distance_time
     global contains_time
     global inside_hits
@@ -67,13 +58,12 @@ def convert_image(file_name, image_center, polygon, px_per_map_unit, fadeout_thr
                            (-y + (image_center.y + height / 2 / px_per_map_unit)) * px_per_map_unit)
                           for x, y in intersection.exterior.coords]
     poly_points_on_map.append(poly_points_on_map[0])
-
-    line_strings = []
-    for i in range(len(poly_points_on_map) - 1):
-        if poly_points_on_map[i] == poly_points_on_map[i + 1]:
-            continue
-        line_strings += [LineString([poly_points_on_map[i], poly_points_on_map[i + 1]])]
     inter_in_image = prepared.prep(Polygon(poly_points_on_map))
+
+    start = time.time()
+    points_in_terrain = preprocess.get_points_in_terrain(inter_in_image, width, height)
+    closest_terrain_points = preprocess.get_closest_terrain_points_for_every_point(points_in_terrain, width, height)
+    preprocess_time += time.time() - start
 
     new_data = []
     for index, item in enumerate(datas):
@@ -82,14 +72,15 @@ def convert_image(file_name, image_center, polygon, px_per_map_unit, fadeout_thr
 
         start = time.time()
 
-        inside_of_polygon = inter_in_image.contains(Point(x, y))
+        inside_of_polygon = (x, y) in points_in_terrain  # inter_in_image.contains(Point(x, y))
         between = time.time()
         contains_time += between - start
 
         min_distance_to_line_string = 0
         if not inside_of_polygon:
             outside_hits += 1
-            min_distance_to_line_string = min([line_string.distance(Point(x, y)) for line_string in line_strings])
+            min_distance_to_line_string = closest_terrain_points[(x, y)][
+                1]  # min([line_string.distance(Point(x, y)) for line_string in line_strings])
         else:
             inside_hits += 1
 

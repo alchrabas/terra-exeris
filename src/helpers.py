@@ -1,3 +1,4 @@
+import math
 import random
 
 from PIL import ImageEnhance
@@ -60,3 +61,17 @@ def distance(x1, y1, x2, y2, exp=2):
 def relative_distance(x1, y1, x2, y2, width, height, exp=2):
     rel = ((abs(x1 - x2) / width) ** exp + (abs(y1 - y2) / height) ** exp)
     return min([1, max([0, rel])])
+
+
+def rotate(origin, point, angle):
+    """
+    Rotate a point counterclockwise by a given angle around a given origin.
+
+    The angle should be given in radians.
+    """
+    ox, oy = origin
+    px, py = point
+
+    qx = ox + math.cos(angle) * (px - ox) - math.sin(angle) * (py - oy)
+    qy = oy + math.sin(angle) * (px - ox) + math.cos(angle) * (py - oy)
+    return qx, qy

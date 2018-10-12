@@ -27,7 +27,7 @@ COLORS = {
     "mountains": "#aaaaaa",
 }
 
-size, all_terrains = terrain_examples.show_everything()
+size, all_terrains = terrain_examples.small_mountain_chain()
 
 VIEW_SIZE = size * PX_PER_MAP_UNIT
 
@@ -180,16 +180,16 @@ def draw_road(terrain, image):
 def draw_river(terrain, image):
     pts_for_image = helpers.points_located_on_center_line(terrain.center_line, 1)
 
-    put_rotated_sprites_onto_image(image, False, pts_for_image, "river", terrain.poly, fadeout_threshold=3)
+    image = put_rotated_sprites_onto_image(image, False, pts_for_image, "river", terrain.poly, fadeout_threshold=3)
 
     temp_image_with_alpha = Image.new("RGBA", image.size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(temp_image_with_alpha)
-    draw.line(convert_coords_to_map(terrain.center_line.coords), fill="#000044", width=10)
+    draw.line(convert_coords_to_map(terrain.center_line.coords), fill="#000044", width=9)
     temp_image_with_alpha.putdata([x[:3] + (16 if x[3] > 128 else x[3],) for x in temp_image_with_alpha.getdata()])
     draw.line(convert_coords_to_map(terrain.center_line.coords), fill="#000044", width=6)
     temp_image_with_alpha.putdata([x[:3] + (24 if x[3] > 16 else x[3],) for x in temp_image_with_alpha.getdata()])
     draw.line(convert_coords_to_map(terrain.center_line.coords), fill="#000044", width=3)
-    temp_image_with_alpha.putdata([x[:3] + (36 if x[3] > 24 else x[3],) for x in temp_image_with_alpha.getdata()])
+    temp_image_with_alpha.putdata([x[:3] + (32 if x[3] > 24 else x[3],) for x in temp_image_with_alpha.getdata()])
 
     return Image.alpha_composite(image, temp_image_with_alpha)
 

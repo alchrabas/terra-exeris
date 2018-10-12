@@ -2,7 +2,7 @@ import collections
 from typing import Callable
 
 from shapely import prepared
-from shapely.geometry import Point, Polygon
+from shapely.geometry import Point
 
 from src import helpers
 
@@ -31,8 +31,11 @@ def get_closest_terrain_points_for_every_point(points_in_terrain, terrain_poly, 
 
     minx, miny, maxx, maxy = [a for a in terrain_poly.bounds]
 
+    TERRAIN_BOUNDS_BUFFER = 30
+
     def accept_candidate(x, y):
-        return minx <= x <= maxx and miny <= y <= maxy and \
+        return minx - TERRAIN_BOUNDS_BUFFER <= x <= maxx + TERRAIN_BOUNDS_BUFFER and \
+               miny - TERRAIN_BOUNDS_BUFFER <= y <= maxy + TERRAIN_BOUNDS_BUFFER and \
                0 <= x <= width and 0 <= y <= height
 
     for (x, y) in points_in_terrain:
